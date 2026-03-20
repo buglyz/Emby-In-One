@@ -1,0 +1,21 @@
+{
+  "name": "emby-in-one",
+  "version": "1.0.0",
+  "description": "Emby multi-server aggregation proxy",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js"
+  },
+  "keywords": ["emby", "proxy", "aggregator"],
+  "license": "MIT",
+  "dependencies": {
+    "axios": "^1.7.0",
+    "better-sqlite3": "^11.0.0",
+    "express": "^4.21.0",
+    "js-yaml": "^4.1.0",
+    "uuid": "^10.0.0",
+    "winston": "^3.14.0",
+    "ws": "^8.18.0"
+  }
+}

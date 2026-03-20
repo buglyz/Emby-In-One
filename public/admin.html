@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Emby-in-One 管理面板</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/lucide@latest"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+body { font-family: 'Inter', sans-serif; background-color: #f8fafc; color: #1e293b; }
+[v-cloak] { display: none; }
+.sidebar-link.active { background-color: #eff6ff; color: #2563eb; border-right: 3px solid #2563eb; }
+.card { background: white; border: 1px solid #e2e8f0; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+.btn-primary { background-color: #2563eb; color: white; transition: all 0.2s; }
+.btn-primary:hover { background-color: #1d4ed8; transform: translateY(-1px); }
+.log-container { background: #1e293b; color: #f1f5f9; font-family: monospace; font-size: 13px; }
+.level-ERROR { color: #f87171; } .level-WARN { color: #fbbf24; } .level-INFO { color: #34d399; } .level-DEBUG { color: #94a3b8; }
+</style>
+</head>
+<body class="min-h-screen">
+<div id="app" v-cloak class="flex min-h-screen">
+  <!-- Login -->
+  <div v-if="!isLoggedIn" class="fixed inset-0 bg-slate-50 flex items-center justify-center z-[1000]">
+    <div class="card w-full max-w-sm p-8 space-y-6 text-center mx-4">
+      <div class="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-blue-600 text-white mb-2">
+        <i data-lucide="layers" class="w-8 h-8"></i>
+      </div>
+      <h1 class="text-2xl font-bold">Emby-in-One</h1>
+      <div class="space-y-4 text-left">
+        <div v-if="loginError" class="p-3 text-sm text-red-600 bg-red-50 rounded-lg border border-red-100">{{ loginError }}</div>
+        <div>
+          <label class="block text-sm font-medium mb-1">用户名</label>
+          <input type="text" v-model="loginForm.user" class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
+        </div>
+        <div>
+          <label class="block text-sm font-medium mb-1">密码</label>
+          <input type="password" v-model="loginForm.pass" @keyup.enter="doLogin" class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
+        </div>
+        <button @click="doLogin" class="w-full btn-primary py-2.5 rounded-lg font-medium">登录</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Mobile Top Bar -->
+  <div v-if="isLoggedIn" class="md:hidden fixed top-0 left-0 right-0 h-14 bg-white border-b border-slate-200 flex items-center px-4 z-[700]">
+    <button @click="showSidebar = true" class="p-2 -ml-2 text-slate-600 hover:text-blue-600">
+      <i data-lucide="menu" class="w-6 h-6"></i>
+    </button>
+    <div class="ml-2 flex items-center space-x-2">
+      <div class="w-7 h-7 rounded-lg bg-blue-600 flex items-center justify-center text-white"><i data-lucide="layers" class="w-4 h-4"></i></div>
+      <span class="font-bold">Emby-in-One</span>
+    </div>
+  </div>
+
+  <!-- Mobile Sidebar Backdrop -->
+  <div v-if="isLoggedIn && showSidebar" @click="showSidebar = false" class="fixed inset-0 bg-black/30 z-[790] md:hidden"></div>
+
+  <!-- Sidebar -->
+  <aside v-if="isLoggedIn"
+    :class="showSidebar ? 'fixed inset-y-0 left-0 z-[800] flex' : 'hidden md:flex'"
+    class="w-64 bg-white border-r border-slate-200 flex-col shrink-0">
+    <div class="p-6 font-bold text-lg flex items-center space-x-3">
+      <div class="w-8 h-8 rounded-lg bg-blue-600 flex items-center justify-center text-white"><i data-lucide="layers" class="w-5 h-5"></i></div>
+      <span>Emby-in-One</span>
+    </div>
+    <!-- Client Info Card -->
+    <div class="mx-4 mb-2 p-3 rounded-xl bg-slate-50 border border-slate-200 text-xs">
+      <div class="flex items-center space-x-2 mb-1 text-slate-500 font-medium">
+        <i data-lucide="smartphone" class="w-3.5 h-3.5"></i>
+        <span>已捕获客户端</span>
+      </div>
+      <div v-if="clientInfo">
+        <div class="font-mono text-slate-700 break-all leading-snug cursor-pointer hover:text-blue-600 transition-colors"
+          :title="'点击复制 UA'"
+          @click="copyClientUA">{{ clientInfo.userAgent || '—' }}</div>
+        <div class="mt-1 text-slate-400 space-y-0.5">
+          <div v-if="clientInfo.client">客户端: {{ clientInfo.client }}<span v-if="clientInfo.clientVersion"> {{ clientInfo.clientVersion }}</span></div>
+          <div v-if="clientInfo.deviceName">设备: {{ clientInfo.deviceName }}</div>
+          <div v-if="clientInfo.capturedAt">时间: {{ new Date(clientInfo.capturedAt).toLocaleString() }}</div>
+        </div>
+      </div>
+      <div v-else class="text-slate-400 italic">等待客户端登录...</div>
+    </div>
+    <nav class="flex-1 px-4 space-y-1 mt-4">
+      <a href="#" v-for="p in pages" :key="p.id" @click="navigateTo(p.id)" :class="{ active: currentPage === p.id }"
+        class="sidebar-link flex items-center space-x-3 px-4 py-3 rounded-xl transition-all text-slate-600 hover:bg-slate-50">
+        <i :data-lucide="p.icon" class="w-5 h-5"></i>
+        <span class="font-medium">{{ p.name }}</span>
+      </a>
+    </nav>
+    <div class="p-4 border-t"><button @click="logout" class="flex items-center space-x-3 px-4 py-3 w-full text-slate-500 hover:text-red-600 transition-all"><i data-lucide="log-out" class="w-5 h-5"></i><span>退出登录</span></button></div>
+  </aside>
+
+  <!-- Main -->
+  <main v-if="isLoggedIn" class="flex-1 p-4 md:p-8 pt-[4.5rem] md:pt-8 overflow-y-auto max-h-screen">
+    <header class="flex flex-wrap justify-between items-center mb-6 md:mb-8 gap-2">
+      <div><h2 class="text-xl md:text-2xl font-bold">{{ pageTitle }}</h2></div>
+      <div class="flex flex-wrap gap-2">
+        <button v-if="currentPage === 'servers'" @click="openAddServer" class="btn-primary px-4 md:px-5 py-2 rounded-lg flex items-center space-x-2"><i data-lucide="plus" class="w-4 h-4"></i><span class="hidden sm:inline">添加服务器</span></button>
+        <button v-if="currentPage === 'proxies'" @click="openAddProxy" class="btn-primary px-4 md:px-5 py-2 rounded-lg flex items-center space-x-2"><i data-lucide="plus" class="w-4 h-4"></i><span class="hidden sm:inline">添加代理</span></button>
+        <button v-if="currentPage === 'logs'" @click="refreshLogs" class="bg-white border px-4 md:px-5 py-2 rounded-lg flex items-center space-x-2"><i data-lucide="refresh-cw" class="w-4 h-4"></i><span class="hidden sm:inline">刷新</span></button>
+        <button v-if="currentPage === 'logs'" @click="downloadLogs" class="bg-white border px-4 md:px-5 py-2 rounded-lg flex items-center space-x-2"><i data-lucide="download" class="w-4 h-4"></i><span class="hidden sm:inline">下载日志</span></button>
+        <button v-if="currentPage === 'logs'" @click="clearLogs" class="bg-white border px-4 md:px-5 py-2 rounded-lg flex items-center space-x-2 text-red-600 hover:bg-red-50"><i data-lucide="trash-2" class="w-4 h-4"></i><span class="hidden sm:inline">清空日志</span></button>
+      </div>
+    </header>
+
+    <!-- Dashboard -->
+    <div v-if="currentPage === 'dashboard'" class="space-y-6">
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6">
+        <div v-for="s in dashStats" :key="s.label" class="card p-4 md:p-6 flex items-center space-x-3 md:space-x-4">
+          <div :class="s.bg" class="p-2.5 md:p-3 rounded-xl"><i :data-lucide="s.icon" class="w-5 h-5 md:w-6 md:h-6"></i></div>
+          <div><div class="text-xl md:text-2xl font-bold">{{ s.val }}</div><div class="text-xs md:text-sm text-slate-500">{{ s.label }}</div></div>
+        </div>
+      </div>
+      <div class="card overflow-x-auto">
+        <table class="w-full min-w-[600px] text-left">
+          <thead class="bg-slate-50 text-slate-500 text-xs font-semibold uppercase"><tr><th class="px-6 py-4">服务器</th><th class="px-6 py-4">地址</th><th class="px-6 py-4">播放模式</th><th class="px-6 py-4">状态</th></tr></thead>
+          <tbody class="divide-y divide-slate-100">
+            <tr v-for="s in stats.upstream" :key="s.name" class="hover:bg-slate-50/50 transition-colors">
+              <td class="px-6 py-4 font-medium">{{ s.name }}</td><td class="px-6 py-4 text-slate-500 text-sm">{{ s.url }}</td>
+              <td class="px-6 py-4"><span class="px-2 py-1 bg-slate-100 rounded text-xs">{{ s.playbackMode }}</span></td>
+              <td class="px-6 py-4"><span :class="s.online ? 'text-green-600' : 'text-red-600'" class="flex items-center space-x-2"><span class="w-2 h-2 rounded-full" :class="s.online ? 'bg-green-500' : 'bg-red-500'"></span><span>{{ s.online ? '在线' : '离线' }}</span></span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Servers -->
+    <div v-if="currentPage === 'servers'" class="card overflow-x-auto">
+      <table class="w-full min-w-[700px] text-left border-collapse">
+        <thead class="bg-slate-50 text-slate-500 text-xs font-semibold uppercase"><tr><th class="px-6 py-4">顺序</th><th class="px-6 py-4">名称</th><th class="px-6 py-4">地址</th><th class="px-6 py-4">代理</th><th class="px-6 py-4">权重</th><th class="px-6 py-4">状态</th><th class="px-6 py-4">操作</th></tr></thead>
+        <tbody class="divide-y divide-slate-100">
+          <tr v-for="(s, idx) in upstreamList" :key="s.index" class="hover:bg-slate-50/50">
+            <td class="px-6 py-4 flex flex-col space-y-1">
+              <button @click="reorder(idx, idx-1)" :disabled="idx===0" class="hover:text-blue-600 disabled:opacity-20"><i data-lucide="chevron-up" class="w-4 h-4"></i></button>
+              <button @click="reorder(idx, idx+1)" :disabled="idx===upstreamList.length-1" class="hover:text-blue-600 disabled:opacity-20"><i data-lucide="chevron-down" class="w-4 h-4"></i></button>
+            </td>
+            <td class="px-6 py-4 font-medium">{{ s.name }}</td>
+            <td class="px-6 py-4 text-slate-500 text-sm max-w-xs truncate">{{ s.url }}</td>
+            <td class="px-6 py-4 text-sm">{{ getProxyName(s.proxyId) }}</td>
+            <td class="px-6 py-4"><span v-if="s.priorityMetadata" class="px-2 py-0.5 bg-purple-100 text-purple-700 rounded text-xs font-bold">元数据优先</span></td>
+            <td class="px-6 py-4"><span :class="s.online ? 'bg-green-50 text-green-600' : 'bg-red-50 text-red-600'" class="px-2 py-1 rounded-full text-xs font-bold uppercase border">{{ s.online ? 'ONLINE' : 'OFFLINE' }}</span></td>
+            <td class="px-6 py-4"><div class="flex space-x-2"><button @click="editServer(s)" class="p-2 text-slate-400 hover:text-blue-600"><i data-lucide="edit-3" class="w-4 h-4"></i></button><button @click="reconnectServer(s.index)" class="p-2 text-slate-400 hover:text-green-600"><i data-lucide="refresh-cw" class="w-4 h-4"></i></button><button @click="deleteServer(s.index)" class="p-2 text-slate-400 hover:text-red-600"><i data-lucide="trash-2" class="w-4 h-4"></i></button></div></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Proxies -->
+    <div v-if="currentPage === 'proxies'" class="space-y-6">
+      <div v-if="proxyList.length === 0" class="card p-12 text-center text-slate-400 italic">暂未添加网络代理</div>
+      <div v-else class="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
+        <div v-for="p in proxyList" :key="p.id" class="card p-4 md:p-6 flex justify-between items-center">
+          <div class="min-w-0 flex-1 mr-3"><h4 class="font-bold text-lg">{{ p.name }}</h4><p class="text-sm text-slate-500 font-mono truncate">{{ p.url }}</p></div>
+          <button @click="deleteProxy(p.id)" class="p-3 text-red-400 hover:bg-red-50 rounded-xl transition-all shrink-0"><i data-lucide="trash-2" class="w-5 h-5"></i></button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Settings -->
+    <div v-if="currentPage === 'settings'" class="card p-4 md:p-8 space-y-6 max-w-2xl">
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div class="space-y-4"><h3 class="text-xs font-bold text-slate-400 uppercase tracking-widest">系统设置</h3>
+          <div><label class="block text-sm font-medium mb-1">系统名称</label><input type="text" v-model="settings.serverName" class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"></div>
+          <div><label class="block text-sm font-medium mb-1">默认播放模式</label><select v-model="settings.playbackMode" class="w-full px-4 py-2 border rounded-lg outline-none"><option value="proxy">代理模式 (Proxy)</option><option value="redirect">直连模式 (302)</option></select></div>
+        </div>
+        <div class="space-y-4"><h3 class="text-xs font-bold text-slate-400 uppercase tracking-widest">管理员账户</h3>
+          <div><label class="block text-sm font-medium mb-1">管理用户名</label><input type="text" v-model="settings.adminUsername" class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"></div>
+          <div><label class="block text-sm font-medium mb-1">修改密码</label><input type="password" v-model="settings.adminPassword" placeholder="留空则不修改" class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"></div>
+        </div>
+      </div>
+      <div class="space-y-4">
+        <h3 class="text-xs font-bold text-slate-400 uppercase tracking-widest">超时设置</h3>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div><label class="block text-sm font-medium mb-1">API 请求超时 (ms)</label><input type="number" v-model.number="settings.timeouts.api" min="1000" step="1000" class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"></div>
+          <div><label class="block text-sm font-medium mb-1">全局请求超时 (ms)</label><input type="number" v-model.number="settings.timeouts.global" min="1000" step="1000" class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"></div>
+          <div><label class="block text-sm font-medium mb-1">登录超时 (ms)</label><input type="number" v-model.number="settings.timeouts.login" min="1000" step="1000" class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"></div>
+          <div><label class="block text-sm font-medium mb-1">健康检查超时 (ms)</label><input type="number" v-model.number="settings.timeouts.healthCheck" min="1000" step="1000" class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"></div>
+          <div><label class="block text-sm font-medium mb-1">健康检查间隔 (ms)</label><input type="number" v-model.number="settings.timeouts.healthInterval" min="5000" step="5000" class="w-full px-4 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"></div>
+        </div>
+      </div>
+      <div class="pt-4 flex items-center space-x-4"><button @click="saveSettings" class="btn-primary px-8 py-2.5 rounded-xl font-bold">保存修改</button><span v-if="saveSuccess" class="text-green-600 text-sm flex items-center space-x-1"><i data-lucide="check-circle" class="w-4 h-4"></i><span>保存成功！</span></span></div>
+    </div>
+
+    <!-- Logs -->
+    <div v-if="currentPage === 'logs'" class="space-y-4">
+      <div class="flex flex-wrap items-center gap-2">
+        <div class="flex space-x-1 bg-white border rounded-lg p-1">
+          <button v-for="lv in ['ALL','ERROR','WARN','INFO','DEBUG']" :key="lv" @click="logLevelFilter = lv"
+            :class="logLevelFilter === lv ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-100'"
+            class="px-3 py-1 rounded text-xs font-bold transition-all">{{ lv }}</button>
+        </div>
+        <input type="text" v-model="logSearch" placeholder="搜索日志..." class="px-4 py-2 border rounded-lg text-sm outline-none focus:ring-2 focus:ring-blue-500 w-full sm:w-64">
+      </div>
+      <div class="card overflow-hidden"><div class="log-container p-4 md:p-6 h-[70vh] overflow-y-auto" ref="logBox"><div v-for="(l, idx) in filteredLogs" :key="idx" class="mb-1"><span class="opacity-40">[{{ l.timestamp }}]</span><span :class="'level-' + l.level.toUpperCase()" class="mx-2">[{{ l.level.toUpperCase() }}]</span><span>{{ l.message }}</span></div></div></div>
+    </div>
+  </main>
+
+  <!-- Server Modal -->
+  <div v-if="showModal" class="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-[500] p-4">
+    <div class="card w-full max-w-lg p-4 md:p-8 space-y-6 animate-in zoom-in duration-200 max-h-[90vh] overflow-y-auto">
+      <div class="flex justify-between items-center text-xl font-bold"><h3>{{ editIndex === null ? '添加上游服务器' : '编辑服务器' }}</h3><button @click="showModal = false" class="text-slate-400"><i data-lucide="x" class="w-6 h-6"></i></button></div>
+      <div class="space-y-4">
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div class="sm:col-span-2"><label class="text-sm font-medium">服务器名称</label><input type="text" v-model="serverForm.name" class="w-full px-4 py-2 border rounded-lg outline-none"></div>
+          <div class="sm:col-span-2"><label class="text-sm font-medium">地址 (URL)</label><input type="text" v-model="serverForm.url" class="w-full px-4 py-2 border rounded-lg outline-none"></div>
+          <div class="sm:col-span-2"><label class="text-sm font-medium">推流域名 (留空=与地址相同)</label><input type="text" v-model="serverForm.streamingUrl" placeholder="https://stream.example.com" class="w-full px-4 py-2 border rounded-lg outline-none"></div>
+          <div><label class="text-sm font-medium">认证方式</label><select v-model="serverForm.authType" class="w-full px-4 py-2 border rounded-lg outline-none"><option value="password">用户名/密码</option><option value="apiKey">API Key</option></select></div>
+          <div><label class="text-sm font-medium">播放模式</label><select v-model="serverForm.playbackMode" class="w-full px-4 py-2 border rounded-lg outline-none"><option value="proxy">代理模式</option><option value="redirect">直连模式</option></select></div>
+          <div><label class="text-sm font-medium">UA 伪装</label><select v-model="serverForm.spoofClient" class="w-full px-4 py-2 border rounded-lg outline-none"><option value="none">无</option><option value="passthrough">透传客户端</option><option value="infuse">Infuse</option><option value="official">官方 Web</option></select></div>
+          <div><label class="text-sm font-medium">自动 302</label><select v-model="serverForm.followRedirects" class="w-full px-4 py-2 border rounded-lg outline-none"><option :value="true">开启</option><option :value="false">关闭</option></select></div>
+          <div><label class="text-sm font-medium">使用网络代理</label><select v-model="serverForm.proxyId" class="w-full px-4 py-2 border rounded-lg outline-none"><option :value="null">不使用</option><option v-for="p in proxyList" :key="p.id" :value="p.id">{{ p.name }}</option></select></div>
+          <div class="flex items-center space-x-2 sm:pt-6"><input type="checkbox" v-model="serverForm.priorityMetadata" class="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"><label class="text-sm font-bold text-purple-600">元数据优先</label></div>
+        </div>
+        <div v-if="serverForm.authType === 'password'" class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div><label class="text-sm font-medium">用户名</label><input type="text" v-model="serverForm.username" class="w-full px-4 py-2 border rounded-lg outline-none"></div>
+          <div><label class="text-sm font-medium">密码</label><input type="password" v-model="serverForm.password" class="w-full px-4 py-2 border rounded-lg outline-none"></div>
+        </div>
+        <div v-else><label class="text-sm font-medium">API Key</label><input type="text" v-model="serverForm.apiKey" class="w-full px-4 py-2 border rounded-lg outline-none"></div>
+      </div>
+      <div class="flex justify-end space-x-3 pt-4"><button @click="showModal = false" class="px-6 py-2.5 rounded-xl text-slate-600 hover:bg-slate-100">取消</button><button @click="saveServer" class="btn-primary px-8 py-2.5 rounded-xl font-bold shadow-lg shadow-blue-500/20">保存设置</button></div>
+    </div>
+  </div>
+
+  <!-- Proxy Modal -->
+  <div v-if="showProxyModal" class="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-[500] p-4">
+    <div class="card w-full max-w-md p-4 md:p-8 space-y-6 animate-in zoom-in duration-200">
+      <h3 class="text-xl font-bold">添加网络代理</h3>
+      <div class="space-y-4">
+        <div><label class="text-sm font-medium">代理显示名称</label><input type="text" v-model="proxyForm.name" placeholder="例如：日本代理" class="w-full px-4 py-2 border rounded-lg outline-none"></div>
+        <div><label class="text-sm font-medium">代理 URL</label><input type="text" v-model="proxyForm.url" placeholder="http://user:pass@ip:port" class="w-full px-4 py-2 border rounded-lg outline-none"></div>
+        <p class="text-xs text-slate-400">目前仅支持 http/https 协议。格式: http://[user:pass@]ip:port</p>
+      </div>
+      <div class="flex justify-end space-x-3 pt-4"><button @click="showProxyModal = false" class="px-6 py-2.5 rounded-xl text-slate-600 hover:bg-slate-100">取消</button><button @click="saveProxy" class="btn-primary px-8 py-2.5 rounded-xl font-bold shadow-lg shadow-blue-500/20">添加代理</button></div>
+    </div>
+  </div>
+</div>
+
+<script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+<script>
+const { createApp } = Vue;
+createApp({
+  data() {
+    return {
+      isLoggedIn: false, loginForm: { user: '', pass: '' }, loginError: '',
+      showSidebar: false,
+      clientInfo: null,
+      currentPage: 'dashboard', pages: [
+        {id:'dashboard', name:'系统概览', icon:'layout-dashboard'},
+        {id:'servers', name:'上游节点', icon:'server'},
+        {id:'proxies', name:'网络代理', icon:'shield'},
+        {id:'settings', name:'全局设置', icon:'settings'},
+        {id:'logs', name:'运行日志', icon:'terminal'}
+      ],
+      stats: { upstreamCount: 0, upstreamOnline: 0, idMappings: { mappingCount: 0, persistent: true }, upstream: [] },
+      upstreamList: [], proxyList: [],
+      settings: { serverName: '', playbackMode: 'proxy', adminUsername: '', adminPassword: '', timeouts: { api: 30000, global: 15000, login: 10000, healthCheck: 10000, healthInterval: 60000 } },
+      logs: [], isLoadingLogs: false, saveSuccess: false,
+      logLevelFilter: 'ALL', logSearch: '',
+      showModal: false, editIndex: null, serverForm: {},
+      showProxyModal: false, proxyForm: { name: '', url: '' }
+    };
+  },
+  computed: { pageTitle() { return this.pages.find(p => p.id === this.currentPage)?.name || '管理面板'; },
+    dashStats() { return [
+      {label:'上游服务器', val:this.stats.upstreamCount, icon:'server', bg:'bg-blue-50 text-blue-600'},
+      {label:'在线节点', val:this.stats.upstreamOnline, icon:'activity', bg:'bg-green-50 text-green-600'},
+      {label:'ID 映射数', val:this.stats.idMappings.mappingCount, icon:'link', bg:'bg-purple-50 text-purple-600'},
+      {label:'存储引擎', val:this.stats.idMappings.persistent?'SQLite':'Memory', icon:'database', bg:'bg-orange-50 text-orange-600'}
+    ];},
+    filteredLogs() {
+      return this.logs.filter(l => {
+        if (this.logLevelFilter !== 'ALL' && l.level.toUpperCase() !== this.logLevelFilter) return false;
+        if (this.logSearch && !l.message.toLowerCase().includes(this.logSearch.toLowerCase())) return false;
+        return true;
+      });
+    }
+  },
+  watch: {
+    currentPage(v) { if(this._refreshTimer) clearTimeout(this._refreshTimer); this._refreshTimer = setTimeout(()=>{this.refresh(); this.$nextTick(() => lucide.createIcons());}, 50); }
+  },
+  mounted() { const t = localStorage.getItem('eio_token'); if(t) this.checkAuth(t); this.$nextTick(() => lucide.createIcons()); },
+  methods: {
+    navigateTo(id) { this.currentPage = id; this.showSidebar = false; },
+    async api(path, opts = {}) {
+      const t = localStorage.getItem('eio_token');
+      const h = { 'Content-Type': 'application/json' };
+      if(t) h['X-Emby-Token'] = t;
+      const r = await fetch(path, { ...opts, headers: h });
+      if(r.status === 401) { this.logout(); throw new Error('Unauthorized'); }
+      return r.json();
+    },
+    async checkAuth() { try { await this.api('/admin/api/status'); this.isLoggedIn = true; this.refresh(); this.refreshClientInfo(); } catch(e) { this.logout(); } },
+    async doLogin() { try {
+      const r = await fetch('/Users/AuthenticateByName', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({Username:this.loginForm.user, Pw:this.loginForm.pass}) });
+      if(!r.ok) throw new Error(); const data = await r.json();
+      localStorage.setItem('eio_token', data.AccessToken); this.isLoggedIn = true; this.refresh(); this.refreshClientInfo();
+    } catch(e) { this.loginError = '用户名或密码错误'; } },
+    logout() { this.isLoggedIn = false; localStorage.removeItem('eio_token'); },
+    async copyClientUA() {
+      if (!this.clientInfo || !this.clientInfo.userAgent) return;
+      try { await navigator.clipboard.writeText(this.clientInfo.userAgent); alert('UA 已复制到剪贴板'); } catch(e) {}
+    },
+    refresh() {
+      if(this.currentPage === 'dashboard') this.refreshDashboard();
+      if(this.currentPage === 'servers') this.refreshServers();
+      if(this.currentPage === 'proxies') this.refreshProxies();
+      if(this.currentPage === 'settings') this.refreshSettings();
+      if(this.currentPage === 'logs') this.refreshLogs();
+    },
+    async refreshDashboard() { this.stats = await this.api('/admin/api/status'); this.refreshClientInfo(); this.$nextTick(()=>lucide.createIcons()); },
+    async refreshClientInfo() { try { this.clientInfo = await this.api('/admin/api/client-info'); } catch(e) {} this.$nextTick(()=>lucide.createIcons()); },
+    async refreshServers() { this.upstreamList = await this.api('/admin/api/upstream'); this.refreshProxies(); this.$nextTick(()=>lucide.createIcons()); },
+    async refreshProxies() { this.proxyList = await this.api('/admin/api/proxies'); this.$nextTick(()=>lucide.createIcons()); },
+    async refreshSettings() { const s = await this.api('/admin/api/settings'); this.settings = { ...s, adminPassword: '', timeouts: s.timeouts || { api: 30000, global: 15000, login: 10000, healthCheck: 10000, healthInterval: 60000 } }; },
+    async saveSettings() { await this.api('/admin/api/settings', { method:'PUT', body:JSON.stringify(this.settings) }); this.saveSuccess = true; setTimeout(()=>this.saveSuccess=false,3000); },
+    async refreshLogs() { this.isLoadingLogs = true; try { this.logs = await this.api('/admin/api/logs?limit=500'); this.$nextTick(() => { const b=this.$refs.logBox; if(b) b.scrollTop=b.scrollHeight; lucide.createIcons(); }); } finally { this.isLoadingLogs=false; } },
+    downloadLogs() {
+      const t = localStorage.getItem('eio_token');
+      const a = document.createElement('a');
+      a.href = '/admin/api/logs/download' + (t ? '?api_key=' + encodeURIComponent(t) : '');
+      a.download = 'emby-in-one.log'; a.click();
+    },
+    async clearLogs() { if(!confirm('确认清空所有日志？')) return; await this.api('/admin/api/logs', { method:'DELETE' }); this.logs = []; },
+    getProxyName(id) { const p = this.proxyList.find(x => x.id === id); return p ? p.name : '不使用'; },
+    openAddServer() { this.editIndex = null; this.serverForm = { name:'', url:'', streamingUrl:'', authType:'password', spoofClient:'none', followRedirects:true, proxyId:null, priorityMetadata:false }; this.showModal = true; },
+    editServer(s) { this.editIndex = s.index; this.serverForm = { ...s, password:'', apiKey:'' }; this.showModal = true; },
+    async saveServer() { const m = this.editIndex === null ? 'POST' : 'PUT'; await this.api('/admin/api/upstream' + (this.editIndex===null?'':'/'+this.editIndex), { method:m, body:JSON.stringify(this.serverForm) }); this.showModal = false; this.refreshServers(); },
+    async deleteServer(idx) { if(confirm('删除服务器？')) { await this.api('/admin/api/upstream/'+idx, { method:'DELETE' }); this.refreshServers(); } },
+    async reconnectServer(idx) { await this.api('/admin/api/upstream/'+idx+'/reconnect', { method:'POST' }); this.refreshServers(); },
+    async reorder(from, to) { await this.api('/admin/api/upstream/reorder', { method:'POST', body:JSON.stringify({fromIndex:from, toIndex:to}) }); this.refreshServers(); },
+    openAddProxy() { this.proxyForm = { name:'', url:'' }; this.showProxyModal = true; },
+    async saveProxy() { await this.api('/admin/api/proxies', { method:'POST', body:JSON.stringify(this.proxyForm) }); this.showProxyModal = false; this.refreshProxies(); },
+    async deleteProxy(id) { if(confirm('删除代理？')) { await this.api('/admin/api/proxies/'+id, { method:'DELETE' }); this.refreshProxies(); } }
+  }
+}).mount('#app');
+</script>
+</body>
+</html>
