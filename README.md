@@ -1,6 +1,6 @@
 # Emby-In-One
 
-> **Version: V1.2** 
+> **Version: V1.2** 我讨厌Codex，又有Bug，管理员密码在后端输出为Hush值，请暂且使用Release V1.0等待修复
 
 [English](README_EN.md) | [更新日志](Update.md) | [更新计划](Update%20Plan.md) | [GitHub](https://github.com/ArizeSky/Emby-In-One)
 
