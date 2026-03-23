@@ -1,6 +1,6 @@
 # Emby-In-One
 
-> **Version: V1.2** 客户端透传错误待修复，请使用release v1.0
+> **Version: V1.2** 
 
 [English](README_EN.md) | [更新日志](Update.md) | [更新计划](Update%20Plan.md) | [GitHub](https://github.com/ArizeSky/Emby-In-One)
 
