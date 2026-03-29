@@ -1,6 +1,6 @@
 # Emby-In-One
 
-> **Version: V1.2**
+> **Version: V1.2.1**
 
 [中文文档](README.md) | [Changelog](Update.md) | [Update Plan](Update%20Plan.md) | [GitHub](https://github.com/ArizeSky/Emby-In-One)
 

@@ -1,5 +1,49 @@
 # Emby-In-One 更新日志
 
+## V1.2.1
+
+发布日期：2026-03-29
+
+---
+
+## Bugfix
+
+### Docker 构建在港机/部分境外服务器失败（exit code 100）
+
+修复在香港等地区服务器上执行 `bash install.sh` 时，Docker 镜像构建阶段 `apt-get update` 报 exit code 100 导致安装失败的问题。
+
+- 原因：旧逻辑无条件将 Debian 源替换为阿里云镜像，而阿里云在港机等境外服务器上网络不通，导致 `apt-get update` 失败
+- 修复：改为先尝试默认 Debian 官方源，仅在失败时回退到阿里云镜像源
+- 对国内服务器无影响，对境外服务器不再强制替换镜像源
+
+### `--reset-password` 命令行重置密码无效
+
+修复通过 `docker exec` 执行 `node src/index.js --reset-password <新密码>` 后密码并未实际改变的问题。
+
+- 原因：`saveConfig()` 内部通过 Promise 队列异步写入文件，而 `process.exit(0)` 在写入完成前就终止了进程
+- 修复：`saveConfig()` 现在返回 Promise，密码重置流程中 `await saveConfig(config)` 等待磁盘写入完成后再退出
+- 注意：其余调用处（服务运行中触发的保存）无需 await，行为不变
+
+### 搜索结果仅显示第一个服务器的内容
+
+修复多服务器场景下搜索结果仅展示优先级最高服务器内容的问题。
+
+- 原因：`/Search/Hints` 将所有服务器结果顺序拼接，第一个服务器的结果全部排在最前，客户端默认限制条数后看起来只有一个服务器的结果；同时无去重处理导致同一影片重复出现
+- 修复：改为交错（interleave）方式合并各服务器搜索结果，各服务器结果轮流出现
+- 同时新增去重逻辑：基于 TMDB ID 或 标题+发行年份 匹配，重复条目关联为同一虚拟 ID 并跳过展示
+- 去重逻辑与 Items 合并路由保持一致，避免跨 provider 不匹配
+
+## 本次涉及文件
+
+| 文件 | 修改内容 |
+|------|----------|
+| `Dockerfile` | apt-get update 先尝试官方源，失败再 fallback 阿里云镜像 |
+| `src/config.js` | `saveConfig()` 返回 Promise |
+| `src/index.js` | `--reset-password` 路径 `await saveConfig()` |
+| `src/routes/library.js` | `/Search/Hints` 改为交错合并 + TMDB/标题去重 |
+
+---
+
 ## V1.2
 
 发布日期：2026-03-23
