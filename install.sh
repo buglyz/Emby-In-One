@@ -170,7 +170,7 @@ COPY go.mod ./
 COPY third_party ./third_party
 COPY cmd ./cmd
 COPY internal ./internal
-RUN CGO_ENABLED=1 go build -o /out/emby-in-one ./cmd/emby-in-one
+RUN mkdir -p /out && CGO_ENABLED=1 go build -o /out/emby-in-one ./cmd/emby-in-one
 
 FROM debian:bookworm-slim
 RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates tzdata && rm -rf /var/lib/apt/lists/*
